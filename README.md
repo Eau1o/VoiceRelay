@@ -1,11 +1,23 @@
-# 双语音引擎调度器
+# VoiceRelay · 双语音引擎调度器
 
 在 Windows 上用一个 **右 Alt** 调用 Typeless 或微信输入法的语音输入。调度器按应用记住上次手动选择的引擎。新应用默认使用 Typeless，周用量达到设定阈值后自动使用微信语音，额度恢复后继续使用原设置。
 
+## 运行环境
+
+| 组件 | 要求 |
+|---|---|
+| 操作系统 | Windows 10 或 11，x64 |
+| Python | 64 位 Python 3.12（已测试 3.12.9），使用标准库即可 |
+| Windows PowerShell | 系统自带的 `powershell.exe`。后台用它和 .NET Framework 的 `System.Management` 监听 Typeless 重启 |
+| 语音引擎 | Typeless 和微信输入法，已测试 Typeless 2.12.0 和微信输入法 3.0.1.35 |
+| Microsoft Edge | 仅运行可选的浏览器快捷键测试时需要 |
+
+无需额外安装 Node.js、npm、.NET SDK、.NET 6 运行时或 PowerShell 7。日常运行也无需执行 `pip install`。
+
 ## 快速开始
 
-1. 准备 Windows 10/11 x64 和 64 位 Python 3.12。程序使用 Python 标准库与 Windows 自带的 Windows PowerShell，无需安装第三方 Python 包。
-2. 安装并启动 Typeless 和微信输入法。将 Typeless 的语音键设为 **右 Alt**，微信输入法的语音键设为 **左 Ctrl + 左 Shift + F12**，两者都使用“按一次开始，再按一次结束”。本项目针对 Typeless 2.12.0 和微信输入法 3.0.1.35 编写。
+1. 下载或克隆本仓库到当前用户可写的目录。
+2. 启动 Typeless 和微信输入法。将 Typeless 的语音键设为 **右 Alt**，微信输入法的语音键设为 **左 Ctrl + 左 Shift + F12**，两者都使用“按一次开始，再按一次结束”。
 3. 在可写的项目目录打开 PowerShell，运行以下命令。看到“调度器已就绪”后，在目标应用的输入框中轻按右 Alt 开始语音，再按一次结束。
 
 ```powershell
