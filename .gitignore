@@ -1,0 +1,9 @@
+/overrides.json
+/overrides-*.tmp
+/logs/
+__pycache__/
+*.py[cod]
+*.db
+*.db-*
+.env
+.env.*
