@@ -10,11 +10,18 @@
 | Python | 64 位 Python 3.12（已测试 3.12.9），使用标准库即可 |
 | Windows PowerShell | 系统自带的 `powershell.exe`。后台用它和 .NET Framework 的 `System.Management` 监听 Typeless 重启 |
 | 语音引擎 | Typeless 和微信输入法，已测试 Typeless 2.12.0 和微信输入法 3.0.1.35 |
-| Microsoft Edge | 仅运行可选的浏览器快捷键测试时需要 |
 
 无需额外安装 Node.js、npm、.NET SDK、.NET 6 运行时或 PowerShell 7。日常运行也无需执行 `pip install`。
 
 ## 快速开始
+
+### 让 Agent 启动
+
+把下面这段话复制给能在这台 Windows 电脑上执行命令的 Agent：
+
+> 请帮我启动 VoiceRelay。如果本机已有项目，就使用现有目录；否则从 https://github.com/Eau1o/VoiceRelay 下载到当前用户可写的目录。按 README 检查运行环境和两款语音软件的快捷键。需要我在软件界面操作时，请告诉我具体按哪里。进入项目目录运行 `python main.py --status`；如果调度器尚未运行，就用同一套 Python 的 `pythonw.exe main.py` 在后台启动它。最后再查一次状态，确认正在运行，并告诉我怎样开始第一次语音输入。
+
+### 手动启动
 
 1. 下载或克隆本仓库到当前用户可写的目录。
 2. 启动 Typeless 和微信输入法。将 Typeless 的语音键设为 **右 Alt**，微信输入法的语音键设为 **左 Ctrl + 左 Shift + F12**，两者都使用“按一次开始，再按一次结束”。
@@ -23,6 +30,8 @@
 ```powershell
 python main.py
 ```
+
+### 常用快捷键
 
 | 操作 | 效果 |
 |---|---|
