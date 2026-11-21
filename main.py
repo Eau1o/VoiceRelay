@@ -2,22 +2,17 @@ import argparse
 import ctypes as C
 import json
 import logging
-import os
 import subprocess
 import sys
 import threading
 import time
 import winreg
 from ctypes import wintypes as W
-from datetime import timedelta
 from pathlib import Path
 
 import dispatch
 import feedback
 import overrides
-import quota_uia
-import store
-import watcher
 from foreground import process_name
 from hook import Hook, REHOOK, RECORDING_ENDED
 from router import TYPELESS, WETYPE
@@ -25,7 +20,6 @@ from winapi import (P, U, bind, close, create_event, foreground_window, kernel, 
                     set_event, wait)
 
 ROOT = Path(__file__).resolve().parent
-DB = Path(os.environ["APPDATA"]) / "Typeless.exe" / "typeless.db"
 RECORDS = ROOT / "overrides.json"
 NAME = r"Local\PersonalDualVoiceRouter_v1"
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -60,13 +54,6 @@ try {
 """
 
 
-def official():
-    try:
-        return quota_uia.read()
-    except (OSError, ValueError):
-        return None
-
-
 def microphone_active(engine):
     folder = ("#tencent#wetype#" if engine == WETYPE else "#programs#typeless#")
     base = r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone\NonPackaged"
@@ -92,10 +79,8 @@ class Service:
     def __init__(self, cfg, stop_handle):
         self.cfg = cfg
         self.stop_handle = stop_handle
-        self.hook = Hook(cfg["threshold"], overrides.read(RECORDS))
+        self.hook = Hook(overrides.read(RECORDS))
         self.stop = threading.Event()
-        self.quota_cv = threading.Condition()
-        self.changed_at = None
         self.maintenance = threading.Condition()
         self.restart_at = None
         self.wetype = False
@@ -132,7 +117,8 @@ class Service:
                 return
             if action == "focus":
                 if value == foreground_window():
-                    hook.remember_focus(value, process_name(value))
+                    name = process_name(value)
+                    hook.remember_focus(value, name)
                     self.update_mode()
             elif action == "dispatch":
                 generation, recording = value
@@ -145,15 +131,10 @@ class Service:
                     logging.info("wetype_hotkey_sent")
             elif action == "check_recording":
                 self.record_check.set()
-            elif action == "denied":
-                feedback.play("denied")
-            elif action in ("clear", "flip"):
+            elif action == "flip":
                 records = hook.records.copy()
                 name = process_name(value)
-                if action == "clear":
-                    records.clear()
-                    tone = TYPELESS
-                elif name:
+                if name:
                     tone = WETYPE if records.get(name, TYPELESS) == TYPELESS else TYPELESS
                     records[name] = tone
                 else:
@@ -187,60 +168,13 @@ class Service:
                 if active is None:
                     break
                 if active:
+                    if not observed:
+                        logging.info("microphone_started %s", engine)
                     observed = True
                 elif observed or time.monotonic() >= deadline:
                     post(hook.tid, RECORDING_ENDED, generation, 0)
                     logging.info("microphone_closed" if observed else "microphone_start_unconfirmed")
                     break
-
-    def changed(self):
-        with self.quota_cv:
-            self.changed_at = time.monotonic()
-            self.quota_cv.notify()
-
-    def quota(self):
-        cache = previous = announced = warned = None
-        periodic = 0
-        while not self.stop.is_set():
-            with self.quota_cv:
-                while not self.stop.is_set():
-                    now = time.monotonic()
-                    due = float("inf") if self.changed_at is None else self.changed_at + max(
-                        self.cfg["db_delay_ms"], self.cfg["debounce_ms"]) / 1000
-                    if now >= min(periodic, due):
-                        if now >= due:
-                            self.changed_at = None
-                        break
-                    self.quota_cv.wait(min(periodic, due) - now)
-            if self.stop.is_set():
-                return
-            result = official()
-            if result is not None:
-                cache = result
-            if cache:
-                used = cache[0]
-            else:
-                try:
-                    used = store.estimate(DB)
-                except (OSError, store.sqlite3.Error):
-                    periodic = time.monotonic() + self.cfg["quota_interval_seconds"]
-                    logging.info("quota_unavailable")
-                    continue
-            periodic = time.monotonic() + self.cfg["quota_interval_seconds"]
-            self.hook.used = used
-            self.update_mode()
-            exhausted = used >= self.hook.threshold
-            week = store.week_start()
-            if exhausted and announced != week:
-                announced = week
-                feedback.play("exhausted")
-            elif previous and not exhausted:
-                feedback.play("restored")
-            elif not exhausted and self.cfg["warn_threshold"] and used >= self.cfg["warn_threshold"] and warned != week:
-                warned = week
-                feedback.play("warning")
-            previous = exhausted
-            logging.info("quota_%s %d", "official" if cache else "local", used)
 
     def wmi(self):
         for line in self.monitor.stdout:
@@ -257,7 +191,7 @@ class Service:
             return
         logging.info("router_ready")
         if sys.stdout:
-            print("调度器已就绪。在目标窗口按 Ctrl + 小键盘减号切换，听到确认音后按右 Alt。", flush=True)
+            print("调度器已就绪。在目标窗口按右 Ctrl + 小键盘减号切换，听到确认音后按右 Alt。", flush=True)
         probe_at = refresh_at = None
         while not self.stop.is_set():
             with self.maintenance:
@@ -321,9 +255,7 @@ class Service:
                 return
             self.worker(self.actions)
             self.worker(self.check_microphone)
-            self.worker(self.quota)
             self.worker(self.maintain)
-            self.worker(lambda: watcher.watch(DB, self.stop_handle, self.changed))
             self.worker(self.shutdown_wait)
             self.hook.run()
         finally:
@@ -337,9 +269,8 @@ class Service:
                 close(self.monitor_job)
             self.hook.actions.put(("stop", None))
             self.hook.ready.set()
-            for cv in (self.maintenance, self.quota_cv):
-                with cv:
-                    cv.notify_all()
+            with self.maintenance:
+                self.maintenance.notify_all()
             for thread in self.workers:
                 thread.join(2)
 
@@ -377,7 +308,18 @@ def main():
         cmd = subprocess.list2cmdline([str(Path(sys.executable).with_name("pythonw.exe")), str(ROOT / "main.py")])
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
             winreg.SetValueEx(key, "PersonalDualVoiceRouter", 0, winreg.REG_SZ, cmd)
-        print("已设置当前用户登录自启。")
+        child = subprocess.Popen(cmd, close_fds=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        for _ in range(150):
+            handle = open_event(2, False, NAME + "_stop")
+            if handle:
+                close(handle)
+                break
+            if child.poll() is not None:
+                raise RuntimeError("后台启动失败，请检查 logs/router.log")
+            time.sleep(.1)
+        else:
+            raise RuntimeError("后台启动超时")
+        print("已启动调度器并设置当前用户登录自启。")
         return
     if args.status:
         instance = open_mutex(0x100000, False, NAME)
@@ -385,20 +327,11 @@ def main():
         if instance:
             close(instance)
         print(json.dumps(overrides.read(RECORDS), ensure_ascii=False, indent=2))
-        result = official()
-        print("官方额度", f"{result[0]} / {result[1]}" if result else "当前不可读")
-        if not result:
-            try:
-                print("本机估算", store.estimate(DB))
-            except store.sqlite3.Error:
-                print("本机估算不可用")
-        print("下次重置", (store.week_start() + timedelta(days=7)).isoformat())
+        print("切换键：右 Ctrl + 小键盘减号")
         return
     cfg = json.loads((ROOT / "config.json").read_text(encoding="utf-8-sig"))
-    if (cfg["threshold"] < 1 or cfg["quota_interval_seconds"] <= 0
-            or min(cfg["debounce_ms"], cfg["db_delay_ms"]) < 0
-            or cfg["shadow_keys"] not in ([162, 160, 123], [162, 164, 123])):
-        parser.error("请检查 config.json 中的阈值、间隔和微信语音键")
+    if cfg["shadow_keys"] not in ([162, 160, 123], [162, 164, 123]):
+        parser.error("请检查 config.json 中的微信语音键")
     instance = mutex(None, True, NAME)
     if not instance:
         raise C.WinError(C.get_last_error())

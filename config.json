@@ -1,8 +1,1 @@
-{
-  "threshold": 2000,
-  "warn_threshold": 0,
-  "quota_interval_seconds": 300,
-  "db_delay_ms": 1500,
-  "debounce_ms": 800,
-  "shadow_keys": [162, 160, 123]
-}
+{"shadow_keys": [162, 160, 123]}

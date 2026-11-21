@@ -49,10 +49,8 @@ def keyboard(code, msg, address):
 
 
 class Hook:
-    def __init__(self, threshold, records, s4=False):
-        self.threshold = threshold
+    def __init__(self, records, s4=False):
         self.records = records
-        self.used = 0
         self.focus = (0, 0, "")
         self.current_pid = U()
         self.physical = bytearray(256)
@@ -73,7 +71,7 @@ class Hook:
         if hwnd != window:
             if not hwnd or not pid_of(hwnd, C.byref(self.current_pid)) or self.current_pid.value != pid:
                 name = ""
-        return engine_for(name, self.records, self.used, self.threshold)
+        return engine_for(name, self.records)
 
     def remember_focus(self, hwnd, name):
         pid = U()
@@ -86,12 +84,9 @@ class Hook:
         if vk == 0x6D:
             if down and not self.minus_down:
                 self.minus_down = True
-                self.minus_taken = bool(any(self.physical[k] for k in CTRL) and not self.recording)
+                self.minus_taken = bool(self.physical[0xA3] and not any(self.physical[k] for k in SHIFT) and not self.recording)
                 if self.minus_taken:
-                    action = "clear" if any(self.physical[k] for k in SHIFT) else "flip"
-                    if self.used >= self.threshold:
-                        action = "denied"
-                    self.actions.put((action, foreground_window()))
+                    self.actions.put(("flip", foreground_window()))
             taken = self.minus_taken
             if not down:
                 self.minus_down = self.minus_taken = False

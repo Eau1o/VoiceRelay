@@ -27,8 +27,21 @@ def batch(events, tag=TAG):
     entries = (Input * len(events))()
     for entry, (vk, up) in zip(entries, events):
         entry.kind = 1
-        entry.data.key = Keyboard(vk, 0, 2 if up else 0, 0, tag)
+        flags = (2 if up else 0) | (1 if vk == 0xA5 else 0)
+        entry.data.key = Keyboard(vk, 0, flags, 0, tag)
     return send(len(entries), entries, C.sizeof(Input))
+
+
+def typeless_tap():
+    if batch([(0xA5, False)]) != 1:
+        return False
+    try:
+        time.sleep(.06)
+    finally:
+        released = batch([(0xA5, True)]) == 1
+        if not released:
+            released = batch([(0xA5, True)]) == 1
+    return released
 
 
 def toggle(keys, physical):

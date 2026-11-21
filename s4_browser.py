@@ -30,7 +30,7 @@ def run():
             "--no-first-run", "--disable-sync", "--disable-background-networking",
             "--no-default-browser-check", "--new-window", page.as_uri()])
         hwnd = None
-        hook = Hook(1980, {}, s4=True)
+        hook = Hook({}, s4=True)
         thread = None
 
         def ratio(window):
@@ -52,7 +52,7 @@ def run():
                 raise RuntimeError("S4 窗口未获焦点，测试已停止")
             if any(state(v) & 0x8000 for v in (0x11, 0x12, 0x10)):
                 raise RuntimeError("请松开修饰键")
-            keys = [(0xA2, False), (0x6D, False), (0x6D, True), (0xA2, True)]
+            keys = [(0xA3, False), (0x6D, False), (0x6D, True), (0xA3, True)]
             if batch(keys, tag=0x5344) != 4:
                 raise RuntimeError("测试按键发送失败")
             time.sleep(0.8)
